@@ -239,7 +239,17 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const pad = n => String(n).padStart(2, '0');
 const dstr = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2600); }
-function err(e) { toast('오류: ' + (e && e.message || e)); }
+function err(e) {
+  const msg = e && e.message || String(e);
+  // 보기 키가 바뀌면(rotatekey) 이 기기에 기억된 예전 키로는 열리지 않는다 → 기억을 지우고 새 주소로 열도록 안내
+  if (msg === 'unauthorized') {
+    try { localStorage.removeItem('bb_k'); } catch (_) {}
+    $('view').innerHTML = '<div class="card loading">보기 키가 바뀌어서 이 기기에 기억된 주소로는 열 수 없어요.<br>'
+      + '맥의 <b>.app_url</b> 파일에 있는 새 주소(#api=...&amp;k=...)로 한 번 열어 주세요.</div>';
+    return;
+  }
+  toast('오류: ' + msg);
+}
 function counts(t) { return t.status !== '취소'; }
 
 async function load(year) {
