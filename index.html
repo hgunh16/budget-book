@@ -64,6 +64,9 @@ main { padding: 12px 16px; max-width: 720px; margin: 0 auto; }
   background: var(--accent); color: #fff; font-size: 28px; box-shadow: 0 4px 14px rgba(0,0,0,.25); z-index: 6; }
 .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; z-index: 10; align-items: flex-end; justify-content: center; }
 .sheet.open { display: flex; }
+html.locked, html.locked body { overflow: hidden; overscroll-behavior: none; }
+.sheet { overscroll-behavior: contain; touch-action: none; }
+.sheet > div { touch-action: pan-y; }
 .sheet > div { background: var(--card); width: 100%; max-width: 560px; max-height: 92vh; max-height: 92dvh; overflow: auto;
   overflow-x: hidden; overscroll-behavior: contain; border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
 .sheet h2 { font-size: 17px; margin: 0 0 10px; display: flex; justify-content: space-between; }
@@ -476,6 +479,22 @@ function openEdit(t, opts) {
   $('edit').classList.add('open');
 }
 function closeSheet(id) { $(id).classList.remove('open'); }
+
+// 아래에서 올라오는 창이 떠 있는 동안 뒤 화면이 스크롤되지 않게 한다.
+// 창을 여는 곳이 여러 군데라, 'open' 표시가 붙고 떨어지는 것을 지켜보고 잠근다.
+function syncScrollLock() {
+  document.documentElement.classList.toggle('locked', !!document.querySelector('.sheet.open'));
+}
+document.querySelectorAll('.sheet').forEach(sh => {
+  new MutationObserver(syncScrollLock).observe(sh, { attributes: true, attributeFilter: ['class'] });
+  // 아이폰은 overflow만으로는 뒤 화면이 끌려 올라가는 일이 있어 손가락 끌기도 막는다.
+  // 창 안의 내용이 실제로 스크롤될 수 있을 때만 그 안에서 움직이게 둔다.
+  sh.addEventListener('touchmove', e => {
+    const panel = sh.firstElementChild;
+    if (e.target.closest('textarea')) return;  // 긴 글 칸 안의 스크롤은 그대로
+    if (!panel.contains(e.target) || panel.scrollHeight <= panel.clientHeight) e.preventDefault();
+  }, { passive: false });
+});
 
 function formTx() {
   const amt = Number(String($('eAmt').value).replace(/[^\d]/g, '')) || 0;
