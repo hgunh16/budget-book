@@ -539,23 +539,55 @@ async function saveEdit() {
     Object.assign(S.cands[S.editCand], tx, { id: '' });
     closeSheet('edit'); renderCands(); return;
   }
-  $('eSave').disabled = true;
+  const learn = $('eLearn').checked;
+
+  // 고치기: 서버 답을 기다리지 않고 화면에 바로 반영해 창을 닫는다 (서버 왕복이 한 번에 1~3초 걸림).
+  // 저장은 뒤에서 하고, 실패하면 알리고 서버 내용으로 다시 맞춘다.
+  if (S.editing) {
+    const old = S.editing;
+    putLocalTx(Object.assign({}, old, tx, { seen: true }));
+    closeSheet('edit'); render(); toast('저장했어요');
+    try {
+      const r = await call('save', { tx: tx, learn: learn });
+      putLocalTx(r.tx); render();
+      if (r.changed) { toast(`같은 사용처 ${r.changed}건도 바꿨어요`); load(S.y).catch(err); }
+    } catch (e) { err(e); load(S.y).catch(() => {}); }
+    return;
+  }
+
+  // 새로 추가: 같은 내역이 이미 있는지 서버가 알려 줘야 해서 답을 기다린다. 대신 전체를 다시 불러오지는 않는다.
+  $('eSave').disabled = true; $('eSave').textContent = '저장 중…';
   try {
-    let r = await call('save', { tx: tx, learn: $('eLearn').checked });
+    let r = await call('save', { tx: tx, learn: learn });
     if (r.duplicate) {
       if (!confirm('같은 금액·시간의 내역이 이미 있어요. 그래도 추가할까요?')) return;
-      r = await call('save', { tx: tx, learn: $('eLearn').checked, force: true });
+      r = await call('save', { tx: tx, learn: learn, force: true });
     }
-    closeSheet('edit');
+    putLocalTx(r.tx);
+    closeSheet('edit'); render();
     toast(r.changed ? `저장했어요 · 같은 사용처 ${r.changed}건도 바꿨어요` : '저장했어요');
-    await load(S.y);
-  } catch (e) { err(e); } finally { $('eSave').disabled = false; }
+    if (r.changed) load(S.y).catch(err);
+  } catch (e) { err(e); } finally { $('eSave').disabled = false; $('eSave').textContent = '저장'; }
+}
+
+// 화면에 들고 있는 내역 목록에 한 건을 넣거나 바꾼다 (전체를 다시 불러오지 않으려고)
+function putLocalTx(t) {
+  const txs = S.data.txs, i = txs.findIndex(x => x.id === t.id);
+  if (i >= 0) {
+    if (!txs[i].seen && t.seen) S.data.unseen = Math.max(0, (S.data.unseen || 0) - 1);
+    txs[i] = t;
+  } else txs.push(t);
+  if (t.card && S.data.cards.indexOf(t.card) < 0) S.data.cards.push(t.card);
 }
 
 async function deleteEdit() {
   if (!S.editing || !confirm('이 내역을 지울까요? 시트에서도 지워집니다.')) return;
-  await call('remove', { id: S.editing.id }).catch(err);
-  closeSheet('edit'); toast('지웠어요'); await load(S.y);
+  const id = S.editing.id, gone = S.data.txs.find(x => x.id === id);
+  // 지우기도 화면에서 먼저 빼고, 서버에는 뒤에서 알린다
+  S.data.txs = S.data.txs.filter(x => x.id !== id);
+  if (gone && !gone.seen) S.data.unseen = Math.max(0, (S.data.unseen || 0) - 1);
+  closeSheet('edit'); render(); toast('지웠어요');
+  try { await call('remove', { id: id }); } catch (e) { err(e); load(S.y).catch(() => {}); }
 }
 
 // ---------- 사진·문자 ----------
